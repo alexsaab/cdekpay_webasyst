@@ -13,7 +13,7 @@
  * @property-read        $currency_id
  * @property-read        $two_steps
  * @property-read        $testmode
- * @property-read int    $check_data_tax
+ * @property-read int $check_data_tax
  * @property-read string $taxation
  * @property-read string $payment_ffd
  * @property-read string $payment_object_type_product
@@ -96,13 +96,13 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         }
 
         $args = array(
-            'Amount'      => round($order_data['amount'] * 100),
-            'Currency'    => ifset(self::$currencies[$this->currency_id]),
-            'OrderId'     => $this->app_id.'_'.$this->merchant_id.'_'.$order_data['order_id'],
+            'Amount' => round($order_data['amount'] * 100),
+            'Currency' => ifset(self::$currencies[$this->currency_id]),
+            'OrderId' => $this->app_id.'_'.$this->merchant_id.'_'.$order_data['order_id'],
             'CustomerKey' => $c->getId(),
             'Description' => ifempty($order_data, 'description', ''),
-            'PayType'     => $this->two_steps ? 'T' : 'O',
-            'DATA'        => array(
+            'PayType' => $this->two_steps ? 'T' : 'O',
+            'DATA' => array(
                 'Email' => $email,
             ),
         );
@@ -111,13 +111,13 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
             'login' => $this->getSettings('cdekpay_merchant_login'),
             'payment_order' => [
                 'pay_amount' => round($order_data['amount'] * 100), // сумма заказа в копейках
-                'pay_for'    => $order_data['order_id'],
+                'pay_for' => $order_data['order_id'],
                 'user_phone' => '',
                 'user_email' => $email,
-                'currency'   => $this->getSettings('cdekpay_currency_id'),
-                'return_url_success' => $cdekfin['url_success'],
-                'return_url_fail'    => $cdekfin['url_fail'],
-                'pay_for_details'    => [
+                'currency' => $this->getSettings('cdekpay_currency_id'),
+                'return_url_success' => $this->getAdapter()->getBackUrl(waAppPayment::URL_SUCCESS, []),
+                'return_url_fail' => $this->getAdapter()->getBackUrl(waAppPayment::URL_FAIL, []),
+                'pay_for_details' => [
                     'payment_type' => '',
                     'payment_base_type' => '',
                     'payment_base' => '',
@@ -131,8 +131,8 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         }
 
         if ($this->getSettings('check_data_tax')) {
-            $post[]['receipt_details'] = $this->getReceiptData($order_data);
-            if (!$args['Receipt']) {
+            $post['payment_order']['receipt_details'] = $this->getReceiptData($order_data);
+            if (!$post['payment_order']['receipt_details']) {
                 return 'Данный вариант платежа недоступен. Воспользуйтесь другим способом оплаты.';
             }
         }
@@ -161,10 +161,43 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
 
     }
 
+
+    /**
+     * Генерация подписи
+     * @param $data
+     * @param $secret
+     * @return mixed
+     */
+    public function signWithSignature($data, $secret) {
+        $forSign = $data;
+        unset($forSign['login']);
+        $str = $this->concatString($forSign);
+        $data['signature'] = strtoupper(hash('sha256', $str.$secret));
+        return $data;
+    }
+
+    /**
+     * Контатинация строк
+     * @param $data
+     * @return string
+     */
+    private function concatString($data) {
+        ksort($data);
+        $str = '';
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                $str .= $this->concatString($value);
+            } else if (is_scalar($value)) {
+                $str .= $value.'|';
+            }
+        }
+        return $str;
+    }
+
     /**
      * Generates token
      *
-     * @param array $args array of query params
+     * @param  array  $args  array of query params
      *
      * @return string
      */
@@ -233,8 +266,8 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
     /**
      * Main method. Call API with params
      *
-     * @param string $method  API Url
-     * @param array  $request API params
+     * @param  string  $method  API Url
+     * @param  array  $request  API params
      *
      * @return mixed
      * @throws Exception
@@ -254,8 +287,8 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
 
         $options = array(
             'request_format' => 'json',
-            'format'         => waNet::FORMAT_JSON,
-            'verify'         => false,
+            'format' => waNet::FORMAT_JSON,
+            'verify' => false,
         );
 
         if (class_exists('cdekpaytestNet')) {
@@ -313,9 +346,12 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         return $response;
     }
 
+
+
+
     /**
      * IPN (Instant Payment Notification)
-     * @param $data - get from gateway
+     * @param $data  - get from gateway
      * @return array|void
      * @throws waPaymentException
      * @throws waException
@@ -398,12 +434,12 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
                 $this->execAppCallback($app_payment_method, $transaction_data);
             } else {
                 $log = array(
-                    'message'                  => 'silent skip callback as repeated',
-                    'method'                   => __METHOD__,
-                    'app_id'                   => $this->app_id,
-                    'callback_method'          => $method,
+                    'message' => 'silent skip callback as repeated',
+                    'method' => __METHOD__,
+                    'app_id' => $this->app_id,
+                    'callback_method' => $method,
                     'original_callback_method' => $app_payment_method,
-                    'transaction_data'         => $transaction_data,
+                    'transaction_data' => $transaction_data,
                 );
 
                 static::log($this->id, $log);
@@ -420,7 +456,7 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
 
             $args = array(
                 'PaymentId' => $transaction_raw_data['transaction']['native_id'],
-                'Amount'    => $amount,
+                'Amount' => $amount,
             );
 
             if (isset($transaction_raw_data['refund_description'])) {
@@ -431,9 +467,9 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
 
             if ($this->getSettings('check_data_tax') && $items) {
                 $order_data = waOrder::factory(array(
-                    'items'      => $items,
-                    'currency'   => $transaction_raw_data['transaction']['currency_id'],
-                    'id'         => $transaction_raw_data['transaction']['order_id'],
+                    'items' => $items,
+                    'currency' => $transaction_raw_data['transaction']['currency_id'],
+                    'id' => $transaction_raw_data['transaction']['order_id'],
                     'contact_id' => $transaction_raw_data['transaction']['customer_id'],
                 ));
                 $args['Receipt'] = $this->getReceiptData($order_data);
@@ -446,21 +482,21 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
 
 
             $response = array(
-                'result'      => 0,
-                'data'        => $res,
+                'result' => 0,
+                'data' => $res,
                 'description' => '',
             );
             $now = date('Y-m-d H:i:s');
             $transaction = array(
-                'native_id'       => $transaction_raw_data['transaction']['native_id'],
-                'type'            => self::OPERATION_REFUND,
-                'state'           => $this->formalizeDataState($res),
-                'result'          => 1,
-                'order_id'        => $transaction_raw_data['transaction']['order_id'],
-                'customer_id'     => $transaction_raw_data['transaction']['customer_id'],
-                'amount'          => $amount/100,
-                'currency_id'     => $transaction_raw_data['transaction']['currency_id'],
-                'parent_id'       => $transaction_raw_data['transaction']['id'],
+                'native_id' => $transaction_raw_data['transaction']['native_id'],
+                'type' => self::OPERATION_REFUND,
+                'state' => $this->formalizeDataState($res),
+                'result' => 1,
+                'order_id' => $transaction_raw_data['transaction']['order_id'],
+                'customer_id' => $transaction_raw_data['transaction']['customer_id'],
+                'amount' => $amount / 100,
+                'currency_id' => $transaction_raw_data['transaction']['currency_id'],
+                'parent_id' => $transaction_raw_data['transaction']['id'],
                 'create_datetime' => $now,
                 'update_datetime' => $now,
             );
@@ -486,22 +522,22 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
             }
 
             $this->saveTransaction($transaction, [
-                // used by $this->formalizeData() and eventually by waPayment->isRefundAvailable()
-                // to calculate how large should total refund be
-                'captured_amount' => round((
-                    $transaction_raw_data['transaction']['amount'] +
-                    ifset($transaction_raw_data, 'transaction', 'refunded_amount', 0)
-                )*100),
-                'Amount' => $amount,
-            ] + $res);
+                    // used by $this->formalizeData() and eventually by waPayment->isRefundAvailable()
+                    // to calculate how large should total refund be
+                    'captured_amount' => round((
+                            $transaction_raw_data['transaction']['amount'] +
+                            ifset($transaction_raw_data, 'transaction', 'refunded_amount', 0)
+                        ) * 100),
+                    'Amount' => $amount,
+                ] + $res);
 
             return $response;
         } catch (Exception $ex) {
             $message = sprintf("Error occurred during %s: %s", __METHOD__, $ex->getMessage());
             self::log($this->id, $message);
             return array(
-                'result'      => -1,
-                'data'        => null,
+                'result' => -1,
+                'data' => null,
                 'description' => $ex->getMessage(),
             );
         }
@@ -520,12 +556,12 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         }
 
         $args = array(
-            'Amount'      => $amount,
-            'Currency'    => ifset(self::$currencies[$this->currency_id]),
-            'OrderId'     => $this->app_id.'_'.$this->merchant_id.'_'.$order_data['order_id'],
+            'Amount' => $amount,
+            'Currency' => ifset(self::$currencies[$this->currency_id]),
+            'OrderId' => $this->app_id.'_'.$this->merchant_id.'_'.$order_data['order_id'],
             'CustomerKey' => $c->getId(),
             'Description' => ifempty($order_data, 'description', ''),
-            'DATA'        => array(
+            'DATA' => array(
                 'Email' => $email,
             ),
         );
@@ -544,7 +580,7 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
 
             $args = array(
                 'PaymentId' => $payment_id,
-                'RebillId'  => $order_data['card_native_id'],
+                'RebillId' => $order_data['card_native_id'],
             );
 
             if ($this->getSettings('check_data_tax')) {
@@ -557,12 +593,12 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
             $res = $this->apiQuery('Charge', $args);
 
             return array(
-                'result'      => true,
+                'result' => true,
                 'description' => '',
             );
         } catch (Exception $ex) {
             return array(
-                'result'      => false,
+                'result' => false,
                 'description' => $ex->getMessage(),
             );
         }
@@ -584,8 +620,8 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
             $this->saveTransaction($transaction_data, $data);
 
             return array(
-                'result'      => 0,
-                'data'        => $transaction_data,
+                'result' => 0,
+                'data' => $transaction_data,
                 'description' => '',
             );
 
@@ -593,7 +629,7 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
             $message = sprintf("Error occurred during %s: %s", __METHOD__, $ex->getMessage());
             self::log($this->id, $message);
             return array(
-                'result'      => -1,
+                'result' => -1,
                 'description' => $ex->getMessage(),
             );
         }
@@ -603,17 +639,18 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
     {
         $args = array(
             'PaymentId' => $data['transaction']['native_id'],
-            'Amount'    => $data['transaction']['amount'] * 100,
+            'Amount' => $data['transaction']['amount'] * 100,
         );
 
         if (!empty($data['order_data'])) {
             $order = waOrder::factory($data['order_data']);
 
             if ($data['transaction']['currency_id'] != $order->currency) {
-                throw new waPaymentException(sprintf('Currency id changed. Expected %s, but get %s.', $data['transaction']['currency_id'], $order->currency));
+                throw new waPaymentException(sprintf('Currency id changed. Expected %s, but get %s.',
+                    $data['transaction']['currency_id'], $order->currency));
             }
 
-            $args['Amount'] = round($order->total*100);
+            $args['Amount'] = round($order->total * 100);
 
             if ($this->getSettings('check_data_tax')) {
                 $args['Receipt'] = $this->getReceiptData($order);
@@ -627,24 +664,24 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         $datetime = date('Y-m-d H:i:s');
         $transaction_model = new waTransactionModel();
         $transaction = $this->saveTransaction([
-            'native_id'       => $data['transaction']['native_id'],
-            'type'            => self::OPERATION_CAPTURE,
-            'result'          => 'unfinished',
-            'order_id'        => $data['transaction']['order_id'],
-            'customer_id'     => $data['transaction']['customer_id'],
-            'amount'          => $args['Amount'] / 100,
-            'currency_id'     => $data['transaction']['currency_id'],
-            'parent_id'       => $data['transaction']['id'],
+            'native_id' => $data['transaction']['native_id'],
+            'type' => self::OPERATION_CAPTURE,
+            'result' => 'unfinished',
+            'order_id' => $data['transaction']['order_id'],
+            'customer_id' => $data['transaction']['customer_id'],
+            'amount' => $args['Amount'] / 100,
+            'currency_id' => $data['transaction']['currency_id'],
+            'parent_id' => $data['transaction']['id'],
             'create_datetime' => $datetime,
             'update_datetime' => $datetime,
-            'state'           => $data['transaction']['state'],
+            'state' => $data['transaction']['state'],
         ]);
 
         try {
             $res = $this->apiQuery('Confirm', $args);
 
             $response = array(
-                'result'      => 0,
+                'result' => 0,
                 'description' => '',
             );
 
@@ -713,7 +750,7 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
     }
 
     /**
-     * @param array<int, array> $item_product_codes - array of product code records indexed by id of record
+     * @param  array<int, array>  $item_product_codes  - array of product code records indexed by id of record
      *  id => [
      *      int      'id'
      *      string   'code'
@@ -743,13 +780,13 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
      * Split one product item to several items because chestnyznak marking code must be related for single product instance
      * Extend each new item with 'fiscal_code' value from $values and converted to fiscal code
      * Invariant $item['quantity'] === count($values)
-     * @param array $item - order item
-     * @param array $values - chestnyznak values
+     * @param  array  $item  - order item
+     * @param  array  $values  - chestnyznak values
      * @return array[] - array of items. Each item has 'product_code'
      */
     protected function splitItem(array $item, array $values)
     {
-        $quantity = (int)ifset($item, 'quantity', 0);
+        $quantity = (int) ifset($item, 'quantity', 0);
         $items = [];
         for ($i = 0; $i < $quantity; $i++) {
             $value = isset($values[$i]) ? $values[$i] : '';
@@ -785,7 +822,7 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
 
     /**
      * Convert transaction raw data to formatted data
-     * @param array $data - transaction raw data
+     * @param  array  $data  - transaction raw data
      * @return array $transaction_data
      * @throws waException
      */
@@ -833,10 +870,12 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
                         // for partially-captured orders
                         // 'captured_amount' contains amount captured, this may differ from `OriginalAmount`
                         $transaction_data['refunded_amount'] = (intval($data['captured_amount']) - intval($data['NewAmount'])) / 100;
-                    } else if (!empty($data['OriginalAmount'])) {
-                        // for fully-captured orders
-                        // (old plugin versions did not write `captured_amount` to raw data)
-                        $transaction_data['refunded_amount'] = (intval($data['OriginalAmount']) - intval($data['NewAmount'])) / 100;
+                    } else {
+                        if (!empty($data['OriginalAmount'])) {
+                            // for fully-captured orders
+                            // (old plugin versions did not write `captured_amount` to raw data)
+                            $transaction_data['refunded_amount'] = (intval($data['OriginalAmount']) - intval($data['NewAmount'])) / 100;
+                        }
                     }
                 }
 
@@ -940,9 +979,9 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         $tm = new waTransactionModel();
         $search = array(
             'native_id' => $native_id,
-            'app_id'    => $this->app_id,
-            'plugin'    => $this->id,
-            'type'      => array(
+            'app_id' => $this->app_id,
+            'plugin' => $this->id,
+            'type' => array(
                 self::OPERATION_AUTH_ONLY,
                 self::OPERATION_AUTH_CAPTURE,
             ),
@@ -953,126 +992,67 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
     }
 
     /**
-     * @param waOrder $order
+     * @param  waOrder  $order
      * @return array|null
      */
     private function getReceiptData(waOrder $order)
     {
-        if (!$this->receipt) {
-            if (!($email = $order->getContactField('email'))) {
-                $email = $this->getDefaultEmail();
-            }
-            $this->receipt = array(
-                'Items'    => array(),
-                'Taxation' => $this->getSettings('taxation'),
-                'Email'    => $email,
-            );
-            if ($phone = $order->getContactField('phone')) {
-                $this->receipt['Phone'] = sprintf('+%s', preg_replace('/^8/', '7', $phone));
-            }
-            foreach ($order->items as $item) {
-                $item['amount'] = $item['price'] - ifset($item['discount'], 0.0);
-                if ($item['price'] > 0 && $item['quantity'] > 0) {
+        $items = [];
 
-                    $item_type = ifset($item['type']);
+        foreach ($order->items as $item) {
 
-                    switch ($item_type) {
-                        case 'shipping':
-                            $item['payment_object_type'] = $this->payment_object_type_shipping;
-                            break;
-                        case 'service':
-                            $item['payment_object_type'] = $this->payment_object_type_service;
-                            break;
-                        case 'product':
-                        default:
-                            $item['payment_object_type'] = $this->payment_object_type_product;
-                            break;
-                    }
 
-                    $items_data = [$item];
-                    if ($item_type === 'product') {
+            $item['amount'] = $item['price'] - ifset($item['discount'], 0.0);
+            if ($item['price'] > 0 && $item['quantity'] > 0) {
 
-                        // typecast workaround for old versions of framework where 'product_codes' key is missing
-                        $product_codes = isset($item['product_codes']) && is_array($item['product_codes']) ? $item['product_codes'] : [];
+                $item_type = ifset($item['type']);
 
-                        $values = $this->getChestnyznakCodeValues($product_codes);
-                        if ($values) {
-                            $items_data = $this->splitItem($item, $values);
-                        }
-                    }
+                switch ($item_type) {
+                    case 'shipping':
+                        $item['payment_object_type'] = $this->payment_object_type_shipping;
+                        break;
+                    case 'service':
+                        $item['payment_object_type'] = $this->payment_object_type_service;
+                        break;
+                    case 'product':
+                    default:
+                        $item['payment_object_type'] = $this->payment_object_type_product;
+                        break;
+                }
 
-                    foreach ($items_data as $item_data) {
-                        $receipt_item = [
-                            'Name' => mb_substr($item_data['name'], 0, 64),
-                            'Price' => round($item_data['amount'] * 100),
-                            'Quantity' => floatval($item_data['quantity']),
-                            'Amount' => round($item_data['amount'] * $item_data['quantity'] * 100),
-                            'PaymentMethod' => $this->payment_method_type,
-                            'PaymentObject' => $item_data['payment_object_type'],
-                            'Tax' => $this->getTaxId($item_data),
-                            'MeasurementUnit' => (empty($item_data['stock_unit_code']) ? 'шт' : $item_data['stock_unit']),
-                        ];
+                $items_data = [$item];
+                if ($item_type === 'product') {
 
-                        if (isset($item_data['fiscal_code'])) {
-                            $receipt_item['Ean13'] = $item_data['fiscal_code'];
-                        }
+                    // typecast workaround for old versions of framework where 'product_codes' key is missing
+                    $product_codes = isset($item['product_codes']) && is_array($item['product_codes']) ? $item['product_codes'] : [];
 
-                        $this->receipt['Items'][] = $receipt_item;
+                    $values = $this->getChestnyznakCodeValues($product_codes);
+                    if ($values) {
+                        $items_data = $this->splitItem($item, $values);
                     }
                 }
 
-                if (!empty($item['tax_rate']) && (!$item['tax_included'] || !in_array($item['tax_rate'], array(0, 10, 18, 20)))) {
-                    return null;
-                }
-            }
+                foreach ($items_data as $item_data) {
+                    $receipt_item = [
+                        'name' => mb_substr($item_data['name'], 0, 120),
+                        'price' => round($item_data['amount'] * 100),
+                        'quantity' => floatval($item_data['quantity']),
+                        'sum' => round($item_data['amount'] * $item_data['quantity'] * 100),
+                        'payment_object' => $this->getSettings('cdekpay_payment_object'),
 
-            if ($order->shipping && $order->shipping > 0) {
-                $item = array(
-                    'tax_rate'     => $order->shipping_tax_rate,
-                    'tax_included' => $order->shipping_tax_included,
-                );
-                $this->receipt['Items'][] = array(
-                    'Name'          => mb_substr($order->shipping_name, 0, 64),
-                    'Price'         => round($order->shipping * 100),
-                    'Quantity'      => 1,
-                    'Amount'        => round($order->shipping * 100),
-                    'PaymentObject' => $this->payment_object_type_shipping,
-                    'PaymentMethod' => $this->payment_method_type,
-                    'Tax'           => $this->getTaxId($item),
-                );
-                if (!empty($item['tax_rate']) && (!$item['tax_included'] || !in_array($item['tax_rate'], array(0, 10, 18, 20)))) {
-                    return null;
+                    ];
+                    if (isset($item_data['fiscal_code'])) {
+                        $receipt_item['mark_code'] = $item_data['fiscal_code'];
+                        $receipt_item['mark_code_type'] = 'ean13';
+                    }
+
+                    $items = $receipt_item;
                 }
-            }
-            if ($this->payment_ffd === '1.2') {
-                $this->ffd_12();
             }
         }
-        return $this->receipt;
+        return $items;
     }
 
-    private function getTaxId($item)
-    {
-        $tax = 'none';
-        if (array_key_exists('tax_rate', $item) && array_key_exists('tax_included', $item) && $item['tax_rate'] !== null) {
-            if ($item['tax_rate'] == 0) {
-                $tax = 'vat0';
-            } elseif ($item['tax_included'] && $item['tax_rate'] == 10) {
-                $tax = 'vat10';
-            } elseif ($item['tax_included'] && $item['tax_rate'] == 18) {
-                $tax = 'vat18';
-            } elseif ($item['tax_included'] && $item['tax_rate'] == 20) {
-                $tax = 'vat20';
-            } elseif (!$item['tax_included'] && $item['tax_rate'] == 10) {
-                $tax = 'vat110';
-            } elseif (!$item['tax_included'] && $item['tax_rate'] == 18) {
-                $tax = 'vat118';
-            } elseif (!$item['tax_included'] && $item['tax_rate'] == 20) {
-                $tax = 'vat120';
-            }
-        }
-        return $tax;
-    }
 
     protected function sanitizeRequest($request)
     {
