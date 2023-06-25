@@ -286,21 +286,9 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
 
         $app_payment_method = self::CALLBACK_PAYMENT;
 
-        if ($this->getSettings('cdekpay_order_to_paid_status')) {
-            $params = [
-                'id' => $request['payment']['id'],
-                'order_id' => $this->order_id,
-                'plugin' => 'cdekpay',
-                'amount' => $request['payment']['pay_amount'],
-                'currency_id' => $request['payment']['currency_id'],
-            ];
-            $this->updateOrderStatusToPaided($params);
-        }
-
         if ($app_payment_method) {
 
             $method = $this->isRepeatedCallback($app_payment_method, $transaction_data);
-
             if ($method == $app_payment_method) {
                 //Save transaction and run app callback only if it not repeated callback;
                 $transaction_data = $this->saveTransaction($transaction_data, $request);

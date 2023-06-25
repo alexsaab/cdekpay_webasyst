@@ -94,13 +94,6 @@ return array(
         'control_type' => waHtmlControl::SELECT,
         'options' => $optionsForObject
     ),
-    'cdekpay_order_to_paid_status' => array(
-        'value' => '',
-        'title' => 'Действие при успешной оплате',
-        'description' => /*_wp*/
-            ('Перевести заказ в статус "Оплачен" при успешной оплате'),
-        'control_type' => waHtmlControl::CHECKBOX,
-    ),
     'cdekpay_check_data_tax' => array(
         'value' => '',
         'title' => /*_wp*/
