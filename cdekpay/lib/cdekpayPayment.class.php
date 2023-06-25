@@ -24,8 +24,6 @@
  */
 class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, waIPaymentRecurrent, waIPaymentCancel, waIPaymentCapture
 {
-    private $order_id;
-    private $receipt;
     protected $orderModel;
 
     private static $currencies = array(
@@ -241,70 +239,71 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         return $str;
     }
 
+
+    /**
+     * Инициализация
+     * @param $request
+     * @return cdekpayPayment
+     * @throws waDbException
+     */
     protected function callbackInit($request)
     {
         $request = $this->sanitizeRequest($request);
-
-        $pattern = '/^([a-z]+)_(\d+)_(.+)$/';
-        if (!empty($request['order_id']) && preg_match($pattern, $request['order_id'], $match)) {
-            $this->app_id = $match[1];
-            $this->merchant_id = $match[2];
-            $this->order_id = $match[3];
-        }
+        $this->order_id = $this->getOrderIdFromRequest($request);
+        $this->merchant_id = waRequest::get('merchant_id', 43, 'int');
+        $this->app_id = waRequest::get('app_id', 'shop', 'string');
         return parent::callbackInit($request);
     }
 
-
     /**
      * IPN (Instant Payment Notification)
-     * @param $data  - get from gateway
+     * @param $request  - get from gateway
      * @return array|void
      * @throws waPaymentException
      * @throws waException
      */
-    protected function callbackHandler($data)
+    protected function callbackHandler($request)
     {
-        $data = $this->sanitizeRequest($data);
+        $request = $this->sanitizeRequest($request);
 
-        if (!isset($data['payment']['access_key'])) {
+        if (!isset($request['payment']['access_key'])) {
             self::log($this->id, 'Error: missed request parameter "Access key"');
             return;
         }
 
-        $this->orderModel = new shopOrderParamsModel();
-
-        $orderId = $this->orderModel->getByField(array(
-            'name' => 'cdekpay_access_key',
-            'value' => $data['payment']['access_key'],
-        ), 'order_id');
-
-        if (!$orderId) {
-            self::log($this->id, 'Error: cant find  parameter "Order Id"');
-            return;
-        }
+        $orderId = $this->getOrderIdFromRequest($request);
 
         $this->order_id = $orderId;
 
-        $order = (new shopOrderModel)->getOrder($orderId);
-
-        $transaction_data = $this->formalizeData($data);
-
-        if ($this->getSettings('cdekpay_testmode')) {
-            $secretKey = $this->getSettings('cdekpay_test_secret_key');
-        } else {
-            $secretKey = $this->getSettings('cdekpay_secret_key');
+        if (!$orderId) {
+            self::log($this->id, 'Error: can\'t find  parameter "Order Id"');
+            return;
         }
 
-        $data_str = $this->concatString($data['payment']);
-        $signature = strtoupper(hash('sha256', $data_str.$secretKey));
+        $transaction_data = $this->formalizeData($request);
 
-        $app_payment_method = self::CALLBACK_CONFIRMATION;
+        $this->checkToken($request);
 
-        if ($app_payment_method && $signature != $data['signature']) {
+        $app_payment_method = self::CALLBACK_PAYMENT;
+
+        if ($this->getSettings('cdekpay_order_to_paid_status')) {
+            $params = [
+                'id' => $request['payment']['id'],
+                'order_id' => $this->order_id,
+                'plugin' => 'cdekpay',
+                'amount' => $request['payment']['pay_amount'],
+                'currency_id' => $request['payment']['currency_id'],
+            ];
+            $this->updateOrderStatusToPaided($params);
+        }
+
+        if ($app_payment_method) {
+
             $method = $this->isRepeatedCallback($app_payment_method, $transaction_data);
+
             if ($method == $app_payment_method) {
                 //Save transaction and run app callback only if it not repeated callback;
-                $transaction_data = $this->saveTransaction($transaction_data, $data);
+                $transaction_data = $this->saveTransaction($transaction_data, $request);
                 $this->execAppCallback($app_payment_method, $transaction_data);
             } else {
                 $log = array(
@@ -315,10 +314,33 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
                     'original_callback_method' => $app_payment_method,
                     'transaction_data' => $transaction_data,
                 );
-
                 static::log($this->id, $log);
             }
         }
+    }
+
+    /**
+     * Оплата по заказу (перевод в статус оплачен)
+     * @param $params
+     * @return void
+     */
+    protected function updateOrderStatusToPaided($params) {
+//        $pa = new shopWorkflowPayAction();
+//        $pa->execute($params);
+    }
+
+    /**
+     * Получаем номер заказа по запросу
+     * @param $request
+     * @return bool|mixed|null
+     * @throws waDbException
+     */
+    protected function getOrderIdFromRequest($request)
+    {
+        $model = new waModel();
+        $orderId = $model->
+        query("SELECT order_id FROM shop_order_params WHERE name='cdekpay_access_key' AND value='{$request['payment']['access_key']}'")->fetchField();
+        return $orderId ?? null;
     }
 
     protected function formalizeDataState($data)
@@ -436,14 +458,10 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
     protected function formalizeData($data)
     {
         $transaction_data = parent::formalizeData(null);
-
         $transaction_data['native_id'] = ifset($data['id']);
-
         $transaction_data['state'] = self::STATE_CAPTURED;
         $transaction_data['parent_id'] = ifset($data['order_id']);;
-        $parent_transaction = null;
-
-        $transaction_data['type'] = self::OPERATION_CAPTURE;
+        $transaction_data['type'] = self::STATE_VERIFIED;
 
         $transaction_data['amount'] = ifset($data['payment']['pay_amount']) / 100;
         $transaction_data['currency_id'] = 'RUB';
@@ -507,6 +525,27 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         ];
 
         return array_key_exists($error_code, $errors) ? $errors[$error_code] : 'Неизвестная ошибка ('.$error_code.').';
+    }
+
+    /**
+     * @param $args
+     * @throws waPaymentException
+     */
+    private function checkToken($data)
+    {
+        if ($this->getSettings('cdekpay_testmode')) {
+            $secretKey = $this->getSettings('cdekpay_test_secret_key');
+        } else {
+            $secretKey = $this->getSettings('cdekpay_secret_key');
+        }
+
+        $data_str = $this->concatString($data['payment']);
+        $expected = strtoupper(hash('sha256', $data_str.$secretKey));
+        $token = $data['signature'] ?? '';
+
+        if ($token !== $expected) {
+            throw new waPaymentException('Invalid token');
+        }
     }
 
     private function getParentTransaction($native_id)
@@ -610,12 +649,19 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         return key($from);
     }
 
-    public function saveSettings($settings = array())
-    {
-        $settings['terminal_key'] = trim($settings['terminal_key']);
-        $settings['terminal_password'] = trim($settings['terminal_password']);
-        return parent::saveSettings($settings);
-    }
+    /**
+     * Записываем установки
+     * @param $settings
+     * @return array
+     * @throws waException
+     */
+//    public function saveSettings($settings = array())
+//    {
+//        $settings['cdekpay_merchant_login'] = trim($settings['cdekpay_merchant_login']);
+//        $settings['cdekpay_secret_key'] = trim($settings['cdekpay_secret_key']);
+//        $settings['cdekpay_test_secret_key'] = trim($settings['cdekpay_test_secret_key']);
+//        return parent::saveSettings($settings);
+//    }
 
 
     public function refund($transaction_raw_data)
