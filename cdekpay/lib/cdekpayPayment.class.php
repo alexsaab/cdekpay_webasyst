@@ -248,10 +248,12 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
      */
     protected function callbackInit($request)
     {
+        $called_url_array = explode('/', $_SERVER['REQUEST_URI']);
+        $count_called_url_array_elements = count($called_url_array);
         $request = $this->sanitizeRequest($request);
         $this->order_id = $this->getOrderIdFromRequest($request);
-        $this->merchant_id = waRequest::get('merchant_id', 43, 'int');
-        $this->app_id = waRequest::get('app_id', 'shop', 'string');
+        $this->merchant_id = $called_url_array[$count_called_url_array_elements-1] ?? $this->getCdekPaymentPluginId();
+        $this->app_id = $called_url_array[$count_called_url_array_elements-2] ?? 'shop';
         return parent::callbackInit($request);
     }
 
@@ -308,13 +310,14 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
     }
 
     /**
-     * Оплата по заказу (перевод в статус оплачен)
-     * @param $params
-     * @return void
+     * Получаем номер заказа по запросу
      */
-    protected function updateOrderStatusToPaided($params) {
-//        $pa = new shopWorkflowPayAction();
-//        $pa->execute($params);
+    protected function getCdekPaymentPluginId()
+    {
+        $model = new waModel();
+        $id = $model->
+            query("SELECT id FROM shop_plugin WHERE type='payment' AND plugin='cdekpay'")->fetchField();
+        return $id ?? null;
     }
 
     /**
