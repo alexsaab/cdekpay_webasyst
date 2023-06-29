@@ -40,7 +40,7 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
     protected function getEndpointUrl()
     {
         return $this->cdekpay_testmode
-            ? 'https://secure.cdekfin.ru/merchant_api/test_payment_orders'
+            ? 'https://secure.cdekfin.ru/test_merchant_api/payment_orders'
             : 'https://secure.cdekfin.ru/merchant_api/payment_orders';
     }
 
@@ -170,6 +170,9 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         } catch (Exception $ex) {
             return 'Данный вариант платежа недоступен. Воспользуйтесь другим способом оплаты.';
         }
+
+
+
         $view = wa()->getView();
 
         $view->assign('plugin', $this);
@@ -289,7 +292,6 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
         $app_payment_method = self::CALLBACK_PAYMENT;
 
         if ($app_payment_method) {
-
             $method = $this->isRepeatedCallback($app_payment_method, $transaction_data);
             if ($method == $app_payment_method) {
                 //Save transaction and run app callback only if it not repeated callback;
@@ -336,7 +338,6 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
 
     protected function formalizeDataState($data)
     {
-        $state = null;
         switch (ifset($data['Status'])) {
             case 'AUTHORIZED':
                 $state = self::STATE_AUTH;
