@@ -122,6 +122,8 @@ class cdekpayPayment extends waPayment implements waIPayment, waIPaymentRefund, 
             if (!$post['payment_order']['receipt_details']) {
                 return 'Данный вариант платежа недоступен. Воспользуйтесь другим способом оплаты.';
             }
+        } else {
+            $post['payment_order']['payment_object'] = $this->getSettings('cdekpay_payment_object');
         }
 
         if ($this->getSettings('cdekpay_testmode')) {
